@@ -1,0 +1,110 @@
+---
+title: "Analysis - Gender Equity"
+author: "Chelsea Ursaner"
+date: "February 2, 2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+**Background:** [EXECUTIVE DIRECTIVE ON GENDER EQUITY IN CITY OPERATIONS](http://www.lamayor.org/mayor-garcetti-issue-executive-directive-gender-equity-city-operations)
+
+**Objective:** Analyze 2/2 employee database extract to identify areas of gender bias in City gov hiring based on Executive Directive areas of focus. 
+
+Read data
+```{r}
+setwd("~/R_Datasets/DataLA")
+data <- read.csv("employee_demographics.csv")
+```
+
+**Data Prepping**
+```{r}
+#See a sample of the data, column formats, and overall size of the dataset
+library(dplyr)
+glimpse(data)
+
+#perform transformations to improve dataset 
+#filter to only full time employees
+data <- filter(data, LEGACY_DESCRIPTION == "Full-Time Regular")
+#remove the dollar sign from hourly base rate so R reads it as numeric
+library(stringr)
+data$HOURLY_BASE_RATE <- as.numeric(str_replace_all(data$HOURLY_BASE_RATE, "\\$", ""))
+library(lubridate) #fix date formats as needed
+data$ORIGINAL_HIRE_DATE <- mdy(data$ORIGINAL_HIRE_DATE)
+data$EMPLOYMENT_DATE <- mdy(data$EMPLOYMENT_DATE)
+```
+
+**Enrichment**
+Create new groupings/variables in order to understand female representation in different jobs
+
+```{r}
+#Aggregating to look at female representation by job (3 options)
+#get counts of females and males - looking at just representation
+data$Female <- ifelse(data$GENDER == "Female",1,0)
+data$Male <- ifelse(data$GENDER == "Male",1,0)
+```
+
+**Exploration and Visualization**
+How do the findings change depending on how I define a job?
+
+```{r}
+#Option 1 - Job and department
+jobs1 <- data %>% group_by(PAYROLL_DEPT_DESC, JOB_CLASS_TITLE) %>%
+  summarize(CountF = sum(Female),
+            CountM = sum(Male),
+            Total = (sum(Female) + sum(Male)),
+            PercentFemale = CountF/Total)
+library(ggplot2)
+sum(data$Female)/nrow(data)
+p1 <- qplot(jobs1$PercentFemale,
+            main = "Level of detail: Job and department. I.e. Mgmt assistant in LAWA",
+            ylab = "Number of Records",
+            xlab = "Percent Female")
+
+
+#Option 2 - Job and department, filtering to jobs that have more than 8 people
+jobs2 <- filter(jobs1, Total > 5)
+p2 <- qplot(jobs2$PercentFemale,
+            main = "Same as #1 but filtered to jobs that have >8 people",
+            ylab = "Number of Records",
+            xlab = "Percent Female")
+
+#Option 3 - just job class title and filtering to > 10 people
+jobs3 <- data %>% group_by(JOB_CLASS_TITLE) %>%
+  summarize(CountF = sum(Female),
+            CountM = sum(Male),
+            Total = (sum(Female) + sum(Male)),
+            PercentFemale = CountF/Total) %>%
+  filter(Total > 10)
+
+p3 <- qplot(jobs3$PercentFemale,
+            main = "LOD Job Class (i.e. Mgmt Assistant) filtered to classes with >10 people",
+            ylab = "Number of Records",
+            xlab = "Percent Female")
+
+library(gridExtra)
+grid.arrange(p1, p2, p3)
+```
+
+
+**Results/Next Steps**
+Creating two lists - one of jobs that are heavily male-dominated and another of jobs that are heavily female-dominated. From here, I'll work with the 
+
+```{r}
+#Using option 3, get subsets of gender biased jobs
+male_bias <- jobs3 %>% filter(PercentFemale < .1)
+female_bias <- jobs3 %>% filter(PercentFemale > .9)
+
+#Display as tables
+library(knitr)
+kable(female_bias, digits = 2, caption = 'Female-Dominated Jobs (where women represent > 90%)')
+kable(male_bias, digits = 2, caption = 'Male-Dominated Jobs (where men represent > 90%)')
+
+#as new files
+write.csv(male_bias, "male_bias.csv", row.names = F)
+write.csv(female_bias, "female_bias.csv", row.names = F)
+```
+
+
+
+
